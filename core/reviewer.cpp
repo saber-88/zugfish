@@ -127,14 +127,6 @@ static std::string uci_to_san(const std::string& fen, const std::string& uci) {
     }
 }
 
-static std::vector<LearningPly> build_learning_line(UciEngine& engine,
-                                                        const std::string& start_fen,
-                                                        const std::string& first_uci,
-                                                        int depth,
-                                                        const CancelCallback& cancel_cb) {
-    std::vector<LearningPly> line;
-    if (first_uci.empty() || first_uci == "(none)")
-        return line;
 struct MoveEvalRecord {
     double accuracy = 100.0;
     double weight = 1.0;
@@ -163,47 +155,17 @@ static double compute_phase_accuracy(const std::vector<MoveEvalRecord>& records,
     return std::clamp(combined, 0.0, 100.0);
 }
 
-    try {
-        chess::Board board(start_fen);
-        EngineEvaluation position_eval;
-        std::string chosen_uci = first_uci;
-
-        // Twenty plies means ten moves for each side (White and Black), including the candidate move.
-        for (int step = 0; step < 20; ++step) {
-            if (cancel_cb && cancel_cb())
-                break;
-            if (chosen_uci.empty() || chosen_uci == "(none)")
-                break;
-
-            LearningPly item;
-            item.ply.fen_before = board.getFen();
-            item.ply.uci = chosen_uci;
-            const chess::Move move = chess::uci::uciToMove(board, chosen_uci);
-            item.ply.san = chess::uci::moveToSan(board, move);
-            board.makeMove(move);
-            item.fen_after = board.getFen();
-
-            engine.set_position_fen(item.fen_after);
-            position_eval = engine.analyze_depth(depth);
-            const bool white_to_move_after = item.fen_after.find(" w ") != std::string::npos;
-            item.best_uci = position_eval.best_move;
-            item.score_white_perspective = position_eval.score.to_white_perspective(white_to_move_after);
-            item.win_percent_white = position_eval.score.win_probability(white_to_move_after) * 100.0;
-            line.push_back(std::move(item));
-
-            // The best move in the evaluated resulting position becomes the next ply.
-            chosen_uci = position_eval.best_move;
-        }
-    } catch (...) {
-        // Keep any valid prefix; a malformed/terminal position must not fail the full review.
+static int parse_elo_header(const std::map<std::string, std::string>& headers, const std::string& key) {
+    auto it = headers.find(key);
+    if (it != headers.end() && !it->second.empty()) {
+        try {
+            int elo = std::stoi(it->second);
+            if (elo >= 100 && elo <= 3800) return elo;
+        } catch (...) {}
     }
-    return line;
+    return 0;
 }
 
-static double compute_game_accuracy(const std::vector<double>& decision_accs,
-                                    const std::vector<double>& all_accs) {
-    const auto& accs = decision_accs.empty() ? all_accs : decision_accs;
-    if (accs.empty()) return 100.0;
 static int calculate_estimated_rating(double accuracy, double acpl,
                                       const PlayerStats& stats,
                                       int actual_elo) {
@@ -232,12 +194,10 @@ static int calculate_estimated_rating(double accuracy, double acpl,
         double max_bound = std::min(3200.0, actual_elo + 550.0);
         perf = std::clamp(perf, min_bound, max_bound);
 
-    double sum = std::accumulate(accs.begin(), accs.end(), 0.0);
-    double arith_mean = sum / accs.size();
+        int rounded = static_cast<int>(std::round(perf / 50.0)) * 50;
+        return std::clamp(rounded, 100, 3200);
+    }
 
-    double harmonic_sum = 0.0;
-    for (double a : accs) {
-        harmonic_sum += 1.0 / std::max(a, 1.0);
     // Historical or unrated games without Elo header
     double base = 0.0;
     if (accuracy >= 95.0) {
@@ -253,13 +213,18 @@ static int calculate_estimated_rating(double accuracy, double acpl,
     } else {
         base = std::max(100.0, 200.0 + accuracy * 9.0);
     }
-    double harmonic_mean = static_cast<double>(accs.size()) / harmonic_sum;
 
-    // Chess.com CAPS2 weighting: 25% arithmetic + 75% harmonic mean.
-    // Gives realistic 40-65% scores for games with multiple blunders/mistakes,
-    // while preserving 92-99% on masterly played games.
-    double blended = (0.25 * arith_mean) + (0.75 * harmonic_mean);
-    return std::clamp(blended, 0.0, 100.0);
+    base += stats.brilliant_count * 60.0;
+    base += stats.great_count * 30.0;
+    base -= stats.blunder_count * 45.0;
+    base -= stats.miss_count * 25.0;
+    base -= stats.mistake_count * 15.0;
+
+    if (acpl <= 25.0) base += 50.0;
+    else if (acpl >= 100.0) base -= 50.0;
+
+    int rounded = static_cast<int>(std::round(base / 50.0)) * 50;
+    return std::clamp(rounded, 100, 3200);
 }
 
 // Check if a move is a genuine piece sacrifice (Brilliant !!)
@@ -445,6 +410,52 @@ static bool check_great_move(
     return false;
 }
 
+static std::vector<LearningPly> build_learning_line(UciEngine& engine,
+                                                    const std::string& start_fen,
+                                                    const std::string& first_uci,
+                                                    int depth,
+                                                    const CancelCallback& cancel_cb) {
+    std::vector<LearningPly> line;
+    if (first_uci.empty() || first_uci == "(none)")
+        return line;
+
+    try {
+        chess::Board board(start_fen);
+        EngineEvaluation position_eval;
+        std::string chosen_uci = first_uci;
+
+        // Twenty plies means ten moves for each side (White and Black), including the candidate move.
+        for (int step = 0; step < 20; ++step) {
+            if (cancel_cb && cancel_cb())
+                break;
+            if (chosen_uci.empty() || chosen_uci == "(none)")
+                break;
+
+            LearningPly item;
+            item.ply.fen_before = board.getFen();
+            item.ply.uci = chosen_uci;
+            const chess::Move move = chess::uci::uciToMove(board, chosen_uci);
+            item.ply.san = chess::uci::moveToSan(board, move);
+            board.makeMove(move);
+            item.fen_after = board.getFen();
+
+            engine.set_position_fen(item.fen_after);
+            position_eval = engine.analyze_depth(depth);
+            const bool white_to_move_after = item.fen_after.find(" w ") != std::string::npos;
+            item.best_uci = position_eval.best_move;
+            item.score_white_perspective = position_eval.score.to_white_perspective(white_to_move_after);
+            item.win_percent_white = position_eval.score.win_probability(white_to_move_after) * 100.0;
+            line.push_back(std::move(item));
+
+            // The best move in the evaluated resulting position becomes the next ply.
+            chosen_uci = position_eval.best_move;
+        }
+    } catch (...) {
+        // Keep any valid prefix; a malformed/terminal position must not fail the full review.
+    }
+    return line;
+}
+
 GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback progress_cb, CancelCallback cancel_cb) {
     GameReview review;
     review.headers = game.headers;
@@ -541,51 +552,6 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
         // 3. Check Brilliant Sacrifice (!!)
         bool is_best_move = (ply.uci == prev_eval.best_move);
         bool is_brilliant = false;
-        
-        chess::Color player_c = white_to_move ? chess::Color::WHITE : chess::Color::BLACK;
-        chess::Color opp_c    = white_to_move ? chess::Color::BLACK : chess::Color::WHITE;
-        int mat_player = total_material(board_before, player_c);
-        int mat_opp    = total_material(board_before, opp_c);
-        int material_lead = mat_player - mat_opp;
-
-        // Strict Criteria for Brilliant (!!):
-        // a) Must be the top engine move
-        // b) Not a book move, not forced
-        // c) Must not already have overwhelming material dominance (material_lead <= 3 pawns)
-        // d) Position must be completely sound after (player_win_after >= 0.50 and win_loss <= 0.01)
-        // e) Must involve an intentional piece sacrifice directly initiated by this move
-        if (is_best_move && !is_book && !is_forced && 
-            material_lead <= 3 && player_win_after >= 0.50 && win_loss <= 0.01) {
-
-            try {
-                chess::Move move_played = chess::uci::uciToMove(board_before, ply.uci);
-                chess::Piece moved_piece = board_before.at(move_played.from());
-                chess::Square to_sq = move_played.to();
-                int moved_val = piece_val(moved_piece.type());
-
-                // Pawn pushes are not piece sacrifices; only minor pieces, rooks, queens
-                if (moved_val >= 3) {
-                    chess::Board b_after(next_fen);
-                    // Check if opponent's best response captures the sacrificed piece
-                    if (!next_eval.best_move.empty() && next_eval.best_move != "(none)") {
-                        chess::Move opp_move = chess::uci::uciToMove(b_after, next_eval.best_move);
-
-                        // Opponent captures the moved piece on its destination square
-                        if (opp_move.to() == to_sq && b_after.isCapture(opp_move)) {
-                            // Net material sacrificed in the exchange
-                            // e.g. Morphy 13. Rxd7 (Rook for Knight, 5 - 3 = 2)
-                            // e.g. Morphy 16. Qb8+ (Queen for 0, 9 - 0 = 9)
-                            chess::Piece cap_piece = board_before.at(to_sq);
-                            int cap_val = (cap_piece != chess::Piece::NONE) ? piece_val(cap_piece.type()) : 0;
-                            int net_sac = moved_val - cap_val;
-
-                            if (net_sac >= 2) {
-                                is_brilliant = true;
-                            }
-                        }
-                    }
-                }
-            } catch (...) {}
         if (!is_book && !is_forced) {
             is_brilliant = check_brilliant_sacrifice(
                 i, ply.uci, prev_eval, next_eval, board_before, next_fen,
@@ -594,13 +560,6 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
 
         // 4. Check Great Move (!)
         bool is_great = false;
-        if (is_best_move && !is_book && !is_forced && !is_brilliant) {
-            // A Great move is a critical move that creates a decisive winning breakthrough
-            // (>= 12% win chance jump to >= 70%) or finds the only saving defense from a losing position
-            if ((player_win_before <= 0.72 && player_win_after >= 0.72 && (player_win_after - player_win_before) >= 0.12) ||
-                (player_win_before <= 0.30 && player_win_after >= 0.45 && (player_win_after - player_win_before) >= 0.15)) {
-                is_great = true;
-            }
         if (!is_book && !is_forced && !is_brilliant) {
             is_great = check_great_move(
                 i, ply.uci, prev_eval, board_before, next_fen,
@@ -617,18 +576,14 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
             classification = MoveClassification::Brilliant;
         } else if (is_great) {
             classification = MoveClassification::Great;
-        } else if (is_best_move || win_loss <= 0.005) {
+        } else if (is_best_move || win_loss <= 0.008) {
             classification = MoveClassification::Best;
         } else if (win_loss <= 0.025) {
             classification = MoveClassification::Excellent;
-        } else if (win_loss <= 0.060) {
+        } else if (win_loss <= 0.065) {
             classification = MoveClassification::Good;
         } else if (win_loss <= 0.130) {
             classification = MoveClassification::Inaccuracy;
-        } else if (win_loss <= 0.250) {
-            classification = MoveClassification::Mistake;
-        } else {
-            if (player_win_before >= 0.75) {
         } else if (win_loss <= 0.220) {
             classification = MoveClassification::Mistake;
         } else {
@@ -641,14 +596,6 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
             }
         }
 
-        // Accuracy score for this single move [0.0, 100.0] via CAPS2 exponential decay formula:
-        // Best moves score 100%, minor inaccuracies score 70-80%, mistakes score 20-35%,
-        // and blunders/misses drop to 0-10%.
-        double delta_win_pct = std::max(0.0, win_loss * 100.0);
-        double move_accuracy = 100.0;
-        if (delta_win_pct > 0.0) {
-            double raw = 103.0 * std::exp(-0.065 * delta_win_pct) - 3.0;
-            move_accuracy = std::clamp(raw, 0.0, 100.0);
         // Decisive Advantage Rule:
         // When strongly winning both before (>= 0.80) and after (>= 0.65),
         // picking a slower path to victory is never marked as Mistake, Blunder, or Miss
@@ -800,6 +747,14 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
     review.black_stats.endgame_accuracy = compute_phase_accuracy(black_records, 2);
     review.black_stats.acpl = avg_int(black_cpls);
 
+    int white_actual_elo = parse_elo_header(review.headers, "WhiteElo");
+    int black_actual_elo = parse_elo_header(review.headers, "BlackElo");
+
+    review.white_stats.estimated_rating = calculate_estimated_rating(
+        review.white_stats.accuracy, review.white_stats.acpl, review.white_stats, white_actual_elo);
+    review.black_stats.estimated_rating = calculate_estimated_rating(
+        review.black_stats.accuracy, review.black_stats.acpl, review.black_stats, black_actual_elo);
+
     review.opening = OpeningBook::instance().identify_opening(uci_history);
 
     return review;
@@ -822,8 +777,9 @@ void GameReviewer::print_review(const GameReview& review, std::ostream& os) {
     os << " Accuracy: " << std::fixed << std::setprecision(1) << review.white_stats.accuracy << "%"
        << std::setw(26) << ""
        << " Accuracy: " << review.black_stats.accuracy << "%\n";
-    os << " ACPL: " << std::setprecision(1) << review.white_stats.acpl
-       << std::setw(30) << ""
+    os << " Played Like: ~" << std::left << std::setw(25) << review.white_stats.estimated_rating
+       << " Played Like: ~" << review.black_stats.estimated_rating << "\n";
+    os << " ACPL: " << std::setprecision(1) << std::setw(32) << review.white_stats.acpl
        << " ACPL: " << review.black_stats.acpl << "\n";
     os << "--------------------------------------------------------------------------------\n";
     os << " Phase Accuracy                            White              Black\n";
