@@ -386,11 +386,6 @@ if ($BuildGui -and $GuiBinary) {
         Write-Success "Bundled Qt runtime libraries into $InstallDir"
     }
 
-    # Copy application icon
-    if (Test-Path "gui\assets\icon.ico") {
-        Copy-Item "gui\assets\icon.ico" -Destination "$InstallDir\zugfish.ico" -Force
-    }
-
     # Create Desktop and Start Menu Shortcuts
     try {
         $WshShell = New-Object -ComObject WScript.Shell
@@ -401,9 +396,6 @@ if ($BuildGui -and $GuiBinary) {
         $Shortcut.TargetPath = "$InstallDir\zugfish-qt.exe"
         $Shortcut.WorkingDirectory = "$InstallDir"
         $Shortcut.Description = "Zugfish Chess Reviewer"
-        if (Test-Path "$InstallDir\zugfish.ico") {
-            $Shortcut.IconLocation = "$InstallDir\zugfish.ico"
-        }
         $Shortcut.Save()
         Write-Success "Created Desktop Shortcut: $DesktopPath\Zugfish.lnk"
 
@@ -413,9 +405,6 @@ if ($BuildGui -and $GuiBinary) {
         $StartShortcut.TargetPath = "$InstallDir\zugfish-qt.exe"
         $StartShortcut.WorkingDirectory = "$InstallDir"
         $StartShortcut.Description = "Zugfish Chess Reviewer"
-        if (Test-Path "$InstallDir\zugfish.ico") {
-            $StartShortcut.IconLocation = "$InstallDir\zugfish.ico"
-        }
         $StartShortcut.Save()
         Write-Success "Created Start Menu Shortcut"
     } catch {

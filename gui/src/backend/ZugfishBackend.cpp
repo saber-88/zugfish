@@ -128,6 +128,14 @@ bool ZugfishBackend::review(const GameData &game, int depth, const QString &engi
         const bool white = (i % 2 == 0);
         AnalyzedData d;
         d.cls = mapClass(a.classification);
+        const bool whiteToMoveBefore = (a.ply.fen_before.find(" w ") != std::string::npos);
+        const auto beforeScore = a.before_eval.score.to_white_perspective(whiteToMoveBefore);
+        d.before.value = beforeScore.value;
+        d.before.isMate = beforeScore.is_mate;
+        d.before.winWhite = a.before_eval.score.win_probability(whiteToMoveBefore) * 100.0;
+        d.before.bestUci = q(a.before_eval.best_move);
+        d.before.bestSan = q(a.best_was_san);
+        d.cls = mapClass(a.classification);
         d.after.value = a.score_white_perspective.value;
         d.after.isMate = a.score_white_perspective.is_mate;
         d.after.winWhite = a.win_percent_white;
@@ -139,6 +147,23 @@ bool ZugfishBackend::review(const GameData &game, int depth, const QString &engi
         d.after.bestSan = d.nextBestSan;
         d.winLoss = a.win_percent_loss;
         d.cpLoss = a.centipawn_loss;
+        auto copyLine = [](const std::vector<zugfish::LearningPly> &source, QVector<LearningPlyData> &target) {
+            target.reserve(static_cast<qsizetype>(source.size()));
+            for (const auto &p : source) {
+                LearningPlyData item;
+                item.san = q(p.ply.san);
+                item.uci = q(p.ply.uci);
+                item.fenBefore = q(p.ply.fen_before);
+                item.fenAfter = q(p.fen_after);
+                item.after.value = p.score_white_perspective.value;
+                item.after.isMate = p.score_white_perspective.is_mate;
+                item.after.winWhite = p.win_percent_white;
+                item.after.bestUci = q(p.best_uci);
+                target.push_back(std::move(item));
+            }
+        };
+        copyLine(a.best_line, d.bestLine);
+        copyLine(a.played_line, d.playedLine);
         out.plies.push_back(d);
 
         addCount(out, white, d.cls, 1);
@@ -146,6 +171,9 @@ bool ZugfishBackend::review(const GameData &game, int depth, const QString &engi
         ++(white ? nW : nB);
     }
 
+    // prefer the accuracy the core itself reported; otherwise derive it
+    out.whiteAccuracy = lastWhiteAcc >= 0 ? lastWhiteAcc : (nW ? sumW / nW : 0.0);
+    out.blackAccuracy = lastBlackAcc >= 0 ? lastBlackAcc : (nB ? sumB / nB : 0.0);
     // Pass calibrated accuracies and phase breakdown from zugfish core
     out.whiteAccuracy = rev.white_stats.accuracy;
     out.blackAccuracy = rev.black_stats.accuracy;

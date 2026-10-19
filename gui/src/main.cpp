@@ -1,7 +1,6 @@
 #include <QCommandLineParser>
 #include <QFontDatabase>
 #include <QGuiApplication>
-#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -36,7 +35,6 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("zugfish"));
     app.setOrganizationName(QStringLiteral("zugfish"));
     app.setApplicationDisplayName(QStringLiteral("zugfish"));
-    app.setWindowIcon(QIcon(QStringLiteral(":/assets/icon.png")));
     QQuickStyle::setStyle(QStringLiteral("Basic"));   // we draw everything ourselves
 
     for (const char *face : {"IBMPlexSans-Regular", "IBMPlexSans-Medium", "IBMPlexSans-SemiBold",

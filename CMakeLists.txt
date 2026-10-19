@@ -1,9 +1,17 @@
+
 cmake_minimum_required(VERSION 3.21)
+
+# Target a modern Windows version for dependencies such as cURL.
+if(WIN32)
+    set(CMAKE_SYSTEM_VERSION "10.0")
+endif()
+
 project(zugfish VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 
 option(BUILD_GUI "Build Qt6 GUI application" ON)
 option(BUILD_CLI "Build CLI tool" ON)
@@ -26,11 +34,13 @@ if(NOT CURL_FOUND)
         URL https://github.com/curl/curl/releases/download/curl-8_11_0/curl-8.11.0.tar.xz
     )
     FetchContent_MakeAvailable(curl)
+    if(NOT TARGET CURL::libcurl)
     if(TARGET libcurl_static)
         add_library(CURL::libcurl ALIAS libcurl_static)
     elseif(TARGET libcurl)
         add_library(CURL::libcurl ALIAS libcurl)
     endif()
+endif()
 endif()
 
 # nlohmann_json: find system package or fetch automatically

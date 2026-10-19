@@ -40,13 +40,6 @@ struct EngineEvaluation {
     std::string best_move;
     std::string ponder_move;
     std::vector<std::string> pv;
-
-    // MultiPV 2 data for detecting "only moves" / Great moves
-    bool has_second_best = false;
-    Score second_score;
-    std::string second_best_move;
-    std::vector<std::string> second_pv;
-
     uint64_t nodes = 0;
     uint64_t nps = 0;
     uint64_t time_ms = 0;

@@ -60,15 +60,9 @@ qt_add_resources(zugfish-qt assets
         assets/pieces/wB.svg assets/pieces/wN.svg assets/pieces/wP.svg
         assets/pieces/bK.svg assets/pieces/bQ.svg assets/pieces/bR.svg
         assets/pieces/bB.svg assets/pieces/bN.svg assets/pieces/bP.svg
-        assets/icon.png
-        assets/icon.svg
         data/demo_games.json
         data/samples.json
 )
-
-if(WIN32)
-    target_sources(zugfish-qt PRIVATE assets/zugfish.rc)
-endif()
 
 target_link_libraries(zugfish-qt PRIVATE Qt6::Core Qt6::Gui Qt6::Quick Qt6::QuickControls2 Qt6::Svg)
 target_compile_options(zugfish-qt PRIVATE $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra>)

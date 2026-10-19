@@ -5,14 +5,13 @@ import QtQuick.Shapes
 Item {
     id: root
     property real value: 0              // 0..100
-    property int rating: 0              // estimated performance rating
     property real size: 88
     property string label
     property string sublabel
     property real shown: 0
 
     implicitWidth: size
-    implicitHeight: size + (root.rating > 0 ? 64 : 38)
+    implicitHeight: size + 38
     onValueChanged: shown = value
     Component.onCompleted: shown = value
     Behavior on shown { NumberAnimation { duration: 900; easing.type: Easing.OutCubic } }
@@ -50,11 +49,11 @@ Item {
         anchors.top: ring.bottom
         anchors.topMargin: 8
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 2
+        spacing: 1
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             text: root.label
-            width: Math.min(implicitWidth, root.size + 44)
+            width: Math.min(implicitWidth, root.size + 36)
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
             color: Theme.text0
@@ -65,25 +64,6 @@ Item {
             text: root.sublabel
             color: Theme.text2
             font.family: Theme.sans; font.pixelSize: Theme.fsXs + 1
-        }
-        Rectangle {
-            visible: root.rating > 0
-            anchors.horizontalCenter: parent.horizontalCenter
-            height: 20
-            width: ratingText.implicitWidth + 14
-            radius: 10
-            color: Theme.bg4
-            border.width: 1
-            border.color: Theme.lineStrong
-            Text {
-                id: ratingText
-                anchors.centerIn: parent
-                text: "Played: ~" + root.rating
-                color: Theme.accent
-                font.family: Theme.mono
-                font.weight: Font.DemiBold
-                font.pixelSize: Theme.fsXs
-            }
         }
     }
 }

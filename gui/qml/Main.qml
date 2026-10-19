@@ -53,19 +53,19 @@ ApplicationWindow {
                 visible: App.gameLoaded
 
                 // sizes (the board is the unit everything else is fitted around)
-                readonly property real pad: 22
-                readonly property real gap: 10
-                readonly property real stripH: 46
-                readonly property real graphH: 64
-                readonly property real controlsH: 40
-                readonly property real evalW: 22
-                readonly property real panelMin: 392
-                readonly property real colGap: 26
+                readonly property real pad: 14
+                readonly property real gap: 8
+                readonly property real stripH: 38
+                readonly property real graphH: 52
+                readonly property real controlsH: 38
+                readonly property real evalW: 18
+                readonly property real panelMin: 350
+                readonly property real colGap: 16
                 readonly property real fitH: height - 2 * pad - 2 * stripH - graphH - controlsH - 4 * gap - 12
                 readonly property real fitW: width - 2 * pad - panelMin - evalW - gap - colGap
                 readonly property real boardSize: Math.floor(Math.max(280, Math.min(fitH, fitW)) / 8) * 8
                 readonly property real boardColW: evalW + gap + boardSize
-                readonly property real panelW: Math.min(560, Math.max(panelMin, width - 2 * pad - boardColW - colGap))
+                readonly property real panelW: Math.min(460, Math.max(panelMin, width - 2 * pad - boardColW - colGap))
                 readonly property real leftX: Math.max(pad, (width - boardColW - colGap - panelW) / 2)
                 readonly property real colH: 2 * stripH + boardSize + graphH + controlsH + 4 * gap + 12
                 readonly property real topY: Math.max(pad, (height - colH) / 2)

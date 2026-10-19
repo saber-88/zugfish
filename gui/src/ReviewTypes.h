@@ -37,13 +37,24 @@ struct EvalData {
     QString bestUci, bestSan;
 };
 
+struct LearningPlyData {
+    QString san;
+    QString uci;
+    QString fenBefore;
+    QString fenAfter;
+    EvalData after;
+};
+
 struct AnalyzedData {
     int cls = Good;
+    EvalData before;                      // evaluation before this ply
     EvalData after;                       // evaluation after this ply
     QString bestBeforeUci, bestBeforeSan; // what the engine preferred instead
     QString nextBestUci, nextBestSan;     // engine's suggestion for the following move
     double winLoss = 0.0;                 // 0..1, win probability the mover gave up
     int cpLoss = 0;
+    QVector<LearningPlyData> bestLine;    // engine's best move + best replies, up to 20 plies (10 moves per side)
+    QVector<LearningPlyData> playedLine;  // actual move + best replies, up to 20 plies (10 moves per side)
 };
 
 struct ReviewData {

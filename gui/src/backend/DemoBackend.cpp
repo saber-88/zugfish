@@ -61,12 +61,6 @@ DemoBackend::DemoBackend()
         }
         e.review.whiteAccuracy = r.value("whiteAccuracy").toDouble();
         e.review.blackAccuracy = r.value("blackAccuracy").toDouble();
-        auto demoRating = [](double acc) {
-            double r = 400.0 + (acc * 24.0);
-            return static_cast<int>(std::round(r / 50.0)) * 50;
-        };
-        e.review.whiteRating = demoRating(e.review.whiteAccuracy);
-        e.review.blackRating = demoRating(e.review.blackAccuracy);
         const QJsonObject counts = r.value("counts").toObject();
         static const char *names[ClassCount] = {"Brilliant", "Great", "Best", "Excellent", "Good", "Book",
                                                 "Inaccuracy", "Mistake", "Blunder", "Miss", "Forced"};

@@ -253,7 +253,6 @@ void UciEngine::start() {
             break;
         }
     }
-    send_command("setoption name MultiPV value 2");
     wait_ready();
 }
 
@@ -370,7 +369,6 @@ void UciEngine::wait_ready() {
 
 void UciEngine::new_game() {
     send_command("ucinewgame");
-    send_command("setoption name MultiPV value 2");
     wait_ready();
 }
 
@@ -396,64 +394,32 @@ EngineEvaluation UciEngine::parse_search_output() {
             std::istringstream iss(line);
             std::string token;
             iss >> token; // skip "info"
-            int current_multipv = 1;
             while (iss >> token) {
-                if (token == "multipv") {
-                    iss >> current_multipv;
-                } else if (token == "depth") {
-                    int d = 0;
-                    iss >> d;
-                    if (current_multipv == 1) eval.depth = d;
+                if (token == "depth") {
+                    iss >> eval.depth;
                 } else if (token == "seldepth") {
-                    int sd = 0;
-                    iss >> sd;
-                    if (current_multipv == 1) eval.seldepth = sd;
+                    iss >> eval.seldepth;
                 } else if (token == "score") {
                     std::string type;
                     iss >> type;
-                    Score s;
                     if (type == "cp") {
-                        s.is_mate = false;
-                        iss >> s.value;
+                        eval.score.is_mate = false;
+                        iss >> eval.score.value;
                     } else if (type == "mate") {
-                        s.is_mate = true;
-                        iss >> s.value;
-                    }
-                    if (current_multipv == 1) {
-                        eval.score = s;
-                    } else if (current_multipv == 2) {
-                        eval.has_second_best = true;
-                        eval.second_score = s;
+                        eval.score.is_mate = true;
+                        iss >> eval.score.value;
                     }
                 } else if (token == "nodes") {
-                    uint64_t n = 0;
-                    iss >> n;
-                    if (current_multipv == 1) eval.nodes = n;
+                    iss >> eval.nodes;
                 } else if (token == "nps") {
-                    uint64_t n = 0;
-                    iss >> n;
-                    if (current_multipv == 1) eval.nps = n;
+                    iss >> eval.nps;
                 } else if (token == "time") {
-                    uint64_t t = 0;
-                    iss >> t;
-                    if (current_multipv == 1) eval.time_ms = t;
+                    iss >> eval.time_ms;
                 } else if (token == "pv") {
-                    std::vector<std::string> pv_moves;
+                    eval.pv.clear();
                     std::string pv_move;
                     while (iss >> pv_move) {
-                        pv_moves.push_back(pv_move);
-                    }
-                    if (current_multipv == 1) {
-                        eval.pv = pv_moves;
-                        if (!pv_moves.empty()) {
-                            eval.best_move = pv_moves[0];
-                        }
-                    } else if (current_multipv == 2) {
-                        eval.second_pv = pv_moves;
-                        if (!pv_moves.empty()) {
-                            eval.has_second_best = true;
-                            eval.second_best_move = pv_moves[0];
-                        }
+                        eval.pv.push_back(pv_move);
                     }
                 }
             }

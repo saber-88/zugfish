@@ -183,24 +183,126 @@ Item {
                 }
             }
 
-            // ---------- accuracy & performance ----------
+            // ---------- interactive learning line ----------
+            Card {
+                Layout.fillWidth: true
+                visible: App.learningMode
+                color: Theme.bg2
+                border.width: 1.5
+                border.color: Theme.accent
+                implicitHeight: learningControls.implicitHeight + 28
+                ColumnLayout {
+                    id: learningControls
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 9
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "MISTAKE EXPLORER"
+                            color: Theme.text3; font.family: Theme.sans; font.weight: Font.DemiBold
+                            font.pixelSize: Theme.fsXs; font.letterSpacing: 1.1
+                        }
+                        Item { Layout.fillWidth: true }
+                        AppButton { text: "Return to game"; variant: "ghost"; compact: true; icon: "x"
+                            onClicked: App.closeLearning() }
+                    }
+                    Text {
+                        text: App.learningStep === 0 ? (App.learningLineName + " · starting position · 10 moves per side") : (App.learningLineName + " · ply " + App.learningStep + " of " + App.learningStepCount + " · 10 moves per side")
+                        color: Theme.text0; font.family: Theme.sans; font.weight: Font.DemiBold; font.pixelSize: Theme.fsMd
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        AppButton { Layout.fillWidth: true; text: "Best continuation"; icon: "check"
+                            variant: App.learningLine === 0 ? "primary" : "secondary"
+                            onClicked: App.switchLearningLine(0) }
+                        AppButton { Layout.fillWidth: true; text: "Opponent punishment"; icon: "target"
+                            variant: App.learningLine === 1 ? "primary" : "secondary"
+                            onClicked: App.switchLearningLine(1) }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "Best continuation shows what you should play. Opponent punishment starts with your actual move, then shows the strongest reply and continuation."
+                        wrapMode: Text.WordWrap; color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                    }
+                }
+            }
+
+            // ---------- learn from major win-probability drops ----------
+            Card {
+                Layout.fillWidth: true
+                visible: root.done && App.learningMoments.length > 0
+                color: Theme.bg2
+                border.width: 1.5
+                border.color: Theme.accent
+                implicitHeight: learningList.implicitHeight + 28
+                ColumnLayout {
+                    id: learningList
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    spacing: 9
+                    Text {
+                        text: "LEARN FROM MISTAKES"
+                        color: Theme.text3; font.family: Theme.sans; font.weight: Font.DemiBold
+                        font.pixelSize: Theme.fsXs; font.letterSpacing: 1.1
+                    }
+                    Text {
+                        text: "For every drop greater than 10 percentage points, compare the best move with the opponent's strongest punishment."
+                        Layout.fillWidth: true; wrapMode: Text.WordWrap
+                        color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                    }
+                    Repeater {
+                        model: App.learningMoments
+                        delegate: Rectangle {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            implicitHeight: 88
+                            radius: 10
+                            color: Theme.bg2
+                            border.width: 1
+                            border.color: Theme.line
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 10; anchors.rightMargin: 8
+                                spacing: 8
+                                ClassBadge { cls: modelData.cls; size: 22 }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text { text: modelData.label; color: Theme.text0; font.family: Theme.mono; font.pixelSize: Theme.fsSm + 1 }
+                                    Text { text: modelData.detail; color: Theme.danger; font.family: Theme.sans; font.pixelSize: Theme.fsXs + 1 }
+                                    Text { text: "Best: " + (modelData.bestMove || "—"); color: Theme.bestArrow; font.family: Theme.sans; font.weight: Font.DemiBold; font.pixelSize: Theme.fsXs + 1 }
+                                }
+                                ColumnLayout {
+                                    spacing: 5
+                                    AppButton { text: "Best line"; icon: "check"; variant: "primary"; compact: true
+                                        onClicked: App.openLearning(modelData.ply, 0) }
+                                    AppButton { text: "Punishment"; icon: "target"; variant: "secondary"; compact: true
+                                        onClicked: App.openLearning(modelData.ply, 1) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // ---------- accuracy ----------
             Card {
                 Layout.fillWidth: true
                 visible: root.done
-                implicitHeight: (root.sum.whiteRating > 0 || root.sum.blackRating > 0) ? 198 : 176
+                implicitHeight: 176
                 Row {
                     anchors.centerIn: parent
                     spacing: 44
                     AccuracyRing {
                         value: root.sum.whiteAccuracy || 0
-                        rating: root.sum.whiteRating || 0
                         label: App.gameInfo.white || "White"
                         sublabel: "White accuracy"
                     }
-                    Rectangle { width: 1; height: 110; color: Theme.line; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -12 }
+                    Rectangle { width: 1; height: 100; color: Theme.line; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -18 }
                     AccuracyRing {
                         value: root.sum.blackAccuracy || 0
-                        rating: root.sum.blackRating || 0
                         label: App.gameInfo.black || "Black"
                         sublabel: "Black accuracy"
                     }

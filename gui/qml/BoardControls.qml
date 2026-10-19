@@ -18,16 +18,16 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 2
 
-        IconButton { icon: "chevrons-left"; tip: "Start  (Home)"; enabled: App.currentPly > 0; onClicked: App.first() }
-        IconButton { icon: "chevron-left"; tip: "Previous  (←)"; enabled: App.currentPly > 0; onClicked: App.prev() }
+        IconButton { icon: "chevrons-left"; tip: "Start  (Home)"; enabled: App.canPrev; onClicked: App.first() }
+        IconButton { icon: "chevron-left"; tip: "Previous  (←)"; enabled: App.canPrev; onClicked: App.prev() }
         IconButton {
             primary: true
             icon: App.autoplay ? "pause" : "play"
             tip: App.autoplay ? "Pause  (Space)" : "Play  (Space)"
             onClicked: App.toggleAutoplay()
         }
-        IconButton { icon: "chevron-right"; tip: "Next  (→)"; enabled: App.currentPly < App.plyCount; onClicked: App.next() }
-        IconButton { icon: "chevrons-right"; tip: "End  (End)"; enabled: App.currentPly < App.plyCount; onClicked: App.last() }
+        IconButton { icon: "chevron-right"; tip: "Next  (→)"; enabled: App.canNext; onClicked: App.next() }
+        IconButton { icon: "chevrons-right"; tip: "End  (End)"; enabled: App.canNext; onClicked: App.last() }
 
         Divider { anchors.verticalCenter: parent.verticalCenter }
 
@@ -61,7 +61,7 @@ Item {
         Text {
             visible: !root.compact
             anchors.verticalCenter: parent.verticalCenter
-            text: App.currentPly + " / " + App.plyCount
+            text: App.navigationPly + " / " + App.navigationCount
             color: Theme.text2
             font.family: Theme.mono
             font.pixelSize: Theme.fsSm + 1

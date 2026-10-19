@@ -28,6 +28,15 @@ enum class MoveClassification {
 std::string to_string(MoveClassification c);
 std::string to_symbol(MoveClassification c);
 
+// One move in a learning continuation, including the resulting position evaluation.
+struct LearningPly {
+    Ply ply;
+    std::string fen_after;
+    std::string best_uci; // best reply from the resulting position
+    Score score_white_perspective;
+    double win_percent_white = 50.0;
+};
+
 struct AnalyzedPly {
     Ply ply;
     EngineEvaluation before_eval;
@@ -39,6 +48,10 @@ struct AnalyzedPly {
     double win_percent_loss = 0.0; // [0.0, 1.0] lost by side to move
     int centipawn_loss = 0;
     MoveClassification classification = MoveClassification::Good;
+    // Populated only when the mover's win probability drops by more than 10 points.
+    // Each line starts from ply.fen_before and contains up to 20 plies (10 moves per side).
+    std::vector<LearningPly> best_line;
+    std::vector<LearningPly> played_line;
 };
 
 struct PlayerStats {
@@ -47,7 +60,6 @@ struct PlayerStats {
     double middlegame_accuracy = 0.0;
     double endgame_accuracy = 0.0;
     double acpl = 0.0;     // Average Centipawn Loss
-    int estimated_rating = 0; // Performance / Game rating (Chess.com style)
     int brilliant_count = 0;
     int great_count = 0;
     int best_count = 0;

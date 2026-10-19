@@ -52,6 +52,16 @@ class AppController : public QObject {
     Q_PROPERTY(QVariantList winSeries READ winSeries NOTIFY reviewChanged)       // plyCount+1 values, White win% 0..100
     Q_PROPERTY(QVariantList classSeries READ classSeries NOTIFY reviewChanged)   // plyCount move classes
     Q_PROPERTY(QVariantList keyMoments READ keyMoments NOTIFY reviewChanged)
+    Q_PROPERTY(QVariantList learningMoments READ learningMoments NOTIFY reviewChanged)
+    Q_PROPERTY(bool learningMode READ learningMode NOTIFY currentChanged)
+    Q_PROPERTY(int learningLine READ learningLine NOTIFY currentChanged) // 0 = best, 1 = played
+    Q_PROPERTY(int learningStep READ learningStep NOTIFY currentChanged)
+    Q_PROPERTY(int learningStepCount READ learningStepCount NOTIFY currentChanged)
+    Q_PROPERTY(QString learningLineName READ learningLineName NOTIFY currentChanged)
+    Q_PROPERTY(bool canPrev READ canPrev NOTIFY currentChanged)
+    Q_PROPERTY(bool canNext READ canNext NOTIFY currentChanged)
+    Q_PROPERTY(int navigationPly READ navigationPly NOTIFY currentChanged)
+    Q_PROPERTY(int navigationCount READ navigationCount NOTIFY currentChanged)
     Q_PROPERTY(QAbstractItemModel *plies READ plies CONSTANT)
 
     // --- online import ---
@@ -88,7 +98,7 @@ public:
     void setFlipped(bool f);
     bool autoplay() const { return autoplay_.isActive(); }
 
-    QString fen() const { return fenAt(ply_); }
+    QString fen() const;
     QStringList squares() const { return squares_; }
     bool whiteToMove() const { return whiteToMove_; }
     int lastFrom() const { return lastFrom_; }
@@ -105,6 +115,16 @@ public:
     QVariantList winSeries() const { return winSeries_; }
     QVariantList classSeries() const { return classSeries_; }
     QVariantList keyMoments() const { return keyMoments_; }
+    QVariantList learningMoments() const { return learningMoments_; }
+    bool learningMode() const { return learningMode_; }
+    int learningLine() const { return learningLine_; }
+    int learningStep() const { return learningStep_; }
+    int learningStepCount() const;
+    QString learningLineName() const { return learningLine_ == 0 ? QStringLiteral("Best continuation") : QStringLiteral("Opponent's punishment"); }
+    bool canPrev() const { return learningMode_ ? learningStep_ > 0 : ply_ > 0; }
+    bool canNext() const { return learningMode_ ? learningStep_ < learningStepCount() : ply_ < plyCount(); }
+    int navigationPly() const { return learningMode_ ? learningStep_ : ply_; }
+    int navigationCount() const { return learningMode_ ? learningStepCount() : plyCount(); }
     QAbstractItemModel *plies() { return &plyModel_; }
 
     QAbstractItemModel *onlineGames() { return &onlineModel_; }
@@ -135,10 +155,13 @@ public:
     Q_INVOKABLE void cancelReview();
 
     Q_INVOKABLE void goTo(int ply);
-    Q_INVOKABLE void next() { goTo(ply_ + 1); }
-    Q_INVOKABLE void prev() { goTo(ply_ - 1); }
-    Q_INVOKABLE void first() { goTo(0); }
-    Q_INVOKABLE void last() { goTo(plyCount()); }
+    Q_INVOKABLE void next();
+    Q_INVOKABLE void prev();
+    Q_INVOKABLE void first();
+    Q_INVOKABLE void last();
+    Q_INVOKABLE void openLearning(int mistakePly, int line = 0);
+    Q_INVOKABLE void switchLearningLine(int line);
+    Q_INVOKABLE void closeLearning();
     Q_INVOKABLE void jumpKey(int direction);                        // next/previous notable move
     Q_INVOKABLE void jumpToClass(int cls, int direction = 1);
     Q_INVOKABLE void toggleFlip() { setFlipped(!flipped_); }
@@ -164,6 +187,8 @@ signals:
 private:
     QString loadGame(const zq::GameData &game);
     QString fenAt(int ply) const;
+    QString displayFen() const;
+    const QVector<zq::LearningPlyData> &activeLearningLine() const;
     void setPly(int ply);
     void rebuildPosition();
     void rebuildReviewDerived();
@@ -193,7 +218,11 @@ private:
     bool hasReview_ = false;
     zq::ReviewData review_;
     QVariantMap summary_;
-    QVariantList winSeries_, classSeries_, keyMoments_;
+    QVariantList winSeries_, classSeries_, keyMoments_, learningMoments_;
+    bool learningMode_ = false;
+    int learningMistakePly_ = 0; // 1-based ply in the original game
+    int learningLine_ = 0;        // 0 = engine's best line, 1 = played-move line
+    int learningStep_ = 0;        // 0 = position before the mistake; 1..N = variation plies played
     PlyModel plyModel_;
     std::thread worker_;
     std::atomic<bool> cancel_{false};

@@ -152,11 +152,11 @@ AppController::AppController(std::unique_ptr<IBackend> backend, QObject *parent)
 
     autoplay_.setInterval(1100);
     connect(&autoplay_, &QTimer::timeout, this, [this] {
-        if (ply_ >= plyCount()) {
+        if (!canNext()) {
             autoplay_.stop();
             emit autoplayChanged();
         } else {
-            setPly(ply_ + 1);
+            next();
         }
     });
 
@@ -264,6 +264,10 @@ QString AppController::loadGame(const GameData &game)
 
     stopWorker();
     autoplay_.stop();
+    learningMode_ = false;
+    learningMistakePly_ = 0;
+    learningStep_ = 0;
+    learningLine_ = 0;
     game_ = game;
     if (game_.finalFen.isEmpty())
         game_.finalFen = game_.plies.last().fenBefore;
@@ -305,6 +309,10 @@ void AppController::closeGame()
 {
     stopWorker();
     autoplay_.stop();
+    learningMode_ = false;
+    learningMistakePly_ = 0;
+    learningStep_ = 0;
+    learningLine_ = 0;
     game_ = GameData();
     gameInfo_.clear();
     ply_ = 0;
@@ -330,11 +338,51 @@ QString AppController::fenAt(int ply) const
     return game_.plies[qMax(0, ply)].fenBefore;
 }
 
+const QVector<zq::LearningPlyData> &AppController::activeLearningLine() const
+{
+    static const QVector<zq::LearningPlyData> empty;
+    if (!learningMode_ || learningMistakePly_ < 1 || learningMistakePly_ > review_.plies.size())
+        return empty;
+    const zq::AnalyzedData &a = review_.plies[learningMistakePly_ - 1];
+    return learningLine_ == 0 ? a.bestLine : a.playedLine;
+}
+
+int AppController::learningStepCount() const
+{
+    return activeLearningLine().size();
+}
+
+QString AppController::displayFen() const
+{
+    if (!learningMode_)
+        return fenAt(ply_);
+    if (learningMistakePly_ < 1 || learningMistakePly_ > game_.plies.size())
+        return fenAt(ply_);
+    if (learningStep_ <= 0)
+        return game_.plies[learningMistakePly_ - 1].fenBefore;
+    const auto &line = activeLearningLine();
+    if (learningStep_ <= line.size())
+        return line[learningStep_ - 1].fenAfter;
+    return line.isEmpty() ? game_.plies[learningMistakePly_ - 1].fenBefore : line.last().fenAfter;
+}
+
+QString AppController::fen() const
+{
+    return displayFen();
+}
+
 void AppController::setPly(int ply)
 {
+    const bool wasLearning = learningMode_;
+    learningMode_ = false;
     ply = qBound(0, ply, plyCount());
-    if (ply == ply_)
+    if (ply == ply_) {
+        if (wasLearning) {
+            rebuildPosition();
+            emit currentChanged();
+        }
         return;
+    }
     ply_ = ply;
     rebuildPosition();
     emit currentChanged();
@@ -349,6 +397,98 @@ void AppController::goTo(int ply)
     setPly(ply);
 }
 
+void AppController::next()
+{
+    if (learningMode_) {
+        if (learningStep_ < learningStepCount()) {
+            ++learningStep_;
+            rebuildPosition();
+            emit currentChanged();
+        }
+        return;
+    }
+    goTo(ply_ + 1);
+}
+
+void AppController::prev()
+{
+    if (learningMode_) {
+        if (learningStep_ > 0) {
+            --learningStep_;
+            rebuildPosition();
+            emit currentChanged();
+        }
+        return;
+    }
+    goTo(ply_ - 1);
+}
+
+void AppController::first()
+{
+    if (learningMode_) {
+        learningStep_ = 0;
+        rebuildPosition();
+        emit currentChanged();
+        return;
+    }
+    goTo(0);
+}
+
+void AppController::last()
+{
+    if (learningMode_) {
+        learningStep_ = learningStepCount();
+        rebuildPosition();
+        emit currentChanged();
+        return;
+    }
+    goTo(plyCount());
+}
+
+void AppController::openLearning(int mistakePly, int line)
+{
+    if (!hasReview_ || mistakePly < 1 || mistakePly > review_.plies.size())
+        return;
+    const zq::AnalyzedData &a = review_.plies[mistakePly - 1];
+    if (a.bestLine.isEmpty() || a.playedLine.isEmpty())
+        return;
+    if (autoplay_.isActive()) {
+        autoplay_.stop();
+        emit autoplayChanged();
+    }
+    learningMistakePly_ = mistakePly;
+    ply_ = mistakePly; // keep the original game's mistake selected in the graph/move list
+    learningLine_ = line == 1 ? 1 : 0;
+    learningMode_ = true;
+    learningStep_ = 0;
+    rebuildPosition();
+    emit currentChanged();
+}
+
+void AppController::switchLearningLine(int line)
+{
+    if (!learningMode_)
+        return;
+    const int requested = line == 1 ? 1 : 0;
+    const zq::AnalyzedData &a = review_.plies[learningMistakePly_ - 1];
+    if ((requested == 0 && a.bestLine.isEmpty()) || (requested == 1 && a.playedLine.isEmpty()))
+        return;
+    learningLine_ = requested;
+    learningStep_ = 0;
+    rebuildPosition();
+    emit currentChanged();
+}
+
+void AppController::closeLearning()
+{
+    if (!learningMode_)
+        return;
+    learningMode_ = false;
+    learningStep_ = 0;
+    rebuildPosition();
+    emit currentChanged();
+}
+
 void AppController::setFlipped(bool f)
 {
     if (f == flipped_) return;
@@ -361,8 +501,8 @@ void AppController::toggleAutoplay()
     if (autoplay_.isActive()) {
         autoplay_.stop();
     } else {
-        if (ply_ >= plyCount())
-            setPly(0);
+        if (!canNext())
+            first();
         autoplay_.start();
     }
     emit autoplayChanged();
@@ -396,11 +536,27 @@ void AppController::jumpToClass(int cls, int direction)
 
 void AppController::rebuildPosition()
 {
-    squares_ = squaresFromFen(fenAt(ply_), &whiteToMove_);
+    squares_ = squaresFromFen(displayFen(), &whiteToMove_);
     material_ = computeMaterial(squares_);
 
     lastFrom_ = lastTo_ = bestFrom_ = bestTo_ = -1;
-    if (ply_ > 0 && ply_ <= plyCount()) {
+    if (learningMode_) {
+        const auto &line = activeLearningLine();
+        const zq::AnalyzedData &mistake = review_.plies[learningMistakePly_ - 1];
+        if (learningStep_ > 0 && learningStep_ <= line.size()) {
+            const QString &uci = line[learningStep_ - 1].uci;
+            lastFrom_ = squareFromUci(uci, 0);
+            lastTo_ = squareFromUci(uci, 2);
+            const QString best = line[learningStep_ - 1].after.bestUci;
+            if (!best.isEmpty() && best != uci) {
+                bestFrom_ = squareFromUci(best, 0);
+                bestTo_ = squareFromUci(best, 2);
+            }
+        } else if (!mistake.bestBeforeUci.isEmpty()) {
+            bestFrom_ = squareFromUci(mistake.bestBeforeUci, 0);
+            bestTo_ = squareFromUci(mistake.bestBeforeUci, 2);
+        }
+    } else if (ply_ > 0 && ply_ <= plyCount()) {
         const QString &uci = game_.plies[ply_ - 1].uci;
         lastFrom_ = squareFromUci(uci, 0);
         lastTo_ = squareFromUci(uci, 2);
@@ -427,6 +583,58 @@ QVariantMap AppController::makeCurrent() const
     m["winWhite"] = 50.0;
     m["evalText"] = QStringLiteral("–");
     m["cls"] = -1;
+
+    if (learningMode_ && learningMistakePly_ >= 1 && learningMistakePly_ <= review_.plies.size()) {
+        const zq::AnalyzedData &mistake = review_.plies[learningMistakePly_ - 1];
+        const auto &line = activeLearningLine();
+        const zq::EvalData eval = learningStep_ == 0 ? mistake.before : line[learningStep_ - 1].after;
+        m["has"] = true;
+        m["hasEval"] = true;
+        // In the recommended line, every engine-selected move is a best move.
+        // In the punishment line, only the first ply is the user's original mistake;
+        // subsequent plies are the opponent's best reply and the engine's best continuation.
+        const int learningClass = (learningLine_ == 1 && learningStep_ == 1) ? mistake.cls : Best;
+        m["cls"] = learningStep_ == 0 ? -1 : learningClass;
+        m["className"] = learningStep_ == 0
+            ? QStringLiteral("Compare alternatives")
+            : (learningClass == Best ? QStringLiteral("Best continuation")
+                                     : QStringLiteral("Your played move"));
+        m["winWhite"] = eval.winWhite;
+        m["isMate"] = eval.isMate;
+        m["evalText"] = formatEval(eval.value, eval.isMate, eval.winWhite);
+        m["bestBeforeSan"] = mistake.bestBeforeSan;
+        m["bestBeforeUci"] = mistake.bestBeforeUci;
+        m["isBest"] = (learningLine_ == 0 || learningStep_ > 1);
+        m["winLoss"] = mistake.winLoss;
+        m["cpLoss"] = mistake.cpLoss;
+        m["nextBestSan"] = eval.bestSan;
+        m["comment"] = learningStep_ == 0
+            ? QStringLiteral("Compare the engine's best move with the move played in the game.")
+            : (learningLine_ == 1 && learningStep_ == 1
+                ? QStringLiteral("This is the move played in the game. Step forward to see the opponent's strongest response.")
+                : QStringLiteral("Follow the engine's strongest continuation from this position."));
+        m["learningMode"] = true;
+        m["learningLineName"] = learningLineName();
+        m["learningStep"] = learningStep_;
+        m["learningStepCount"] = line.size();
+        if (learningStep_ == 0) {
+            const QString originalSan = game_.plies[learningMistakePly_ - 1].san;
+            const bool white = (learningMistakePly_ % 2 == 1);
+            m["moveLabel"] = QStringLiteral("Before %1%2 %3").arg((learningMistakePly_ + 1) / 2).arg(white ? "." : "...").arg(originalSan);
+            m["ply"] = 0;
+        } else {
+            const auto &item = line[learningStep_ - 1];
+            const QStringList fenParts = item.fenBefore.split(' ');
+            const bool white = fenParts.value(1, QStringLiteral("w")) == QLatin1String("w");
+            const int moveNo = fenParts.value(5, QStringLiteral("1")).toInt();
+            m["san"] = item.san;
+            m["uci"] = item.uci;
+            m["isWhite"] = white;
+            m["moveLabel"] = QStringLiteral("%1%2 %3").arg(moveNo).arg(white ? "." : "...").arg(item.san);
+            m["ply"] = learningStep_;
+        }
+        return m;
+    }
 
     if (ply_ > 0 && ply_ <= plyCount()) {
         const PlyData &p = game_.plies[ply_ - 1];
@@ -485,6 +693,9 @@ void AppController::startReview()
         return;
     stopWorker();
 
+    learningMode_ = false;
+    learningMistakePly_ = 0;
+    learningStep_ = 0;
     state_ = Running;
     progress_ = 0.0;
     reviewError_.clear();
@@ -563,6 +774,7 @@ void AppController::rebuildReviewDerived()
     winSeries_.clear();
     classSeries_.clear();
     keyMoments_.clear();
+    learningMoments_.clear();
     summary_.clear();
     summary_["done"] = hasReview_;
 
@@ -594,6 +806,24 @@ void AppController::rebuildReviewDerived()
         summary_["blackRating"] = review_.blackRating;
         summary_["whiteCounts"] = wc;
         summary_["blackCounts"] = bc;
+
+        for (int i = 0; i < review_.plies.size(); ++i) {
+            const zq::AnalyzedData &a = review_.plies[i];
+            if (a.winLoss <= 0.10 || a.bestLine.isEmpty() || a.playedLine.isEmpty())
+                continue;
+            const int ply = i + 1;
+            const bool white = (ply % 2 == 1);
+            QVariantMap m;
+            m["ply"] = ply;
+            m["cls"] = a.cls;
+            m["white"] = white;
+            m["label"] = QStringLiteral("%1%2 %3").arg((ply + 1) / 2).arg(white ? "." : "...").arg(game_.plies[i].san);
+            m["detail"] = QStringLiteral("−%1 percentage points").arg(qRound(a.winLoss * 100.0));
+            m["bestMove"] = a.bestBeforeSan;
+            m["bestPlies"] = a.bestLine.size();
+            m["playedPlies"] = a.playedLine.size();
+            learningMoments_ << m;
+        }
 
         struct Moment { double weight; QVariantMap map; };
         QVector<Moment> moments;

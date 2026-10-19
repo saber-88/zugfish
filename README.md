@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="gui/assets/icon.png" width="140" height="140" alt="Zugfish App Icon" />
-</p>
-
 # Zugfish ♟️
 
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-blue.svg)](https://en.cppreference.com/w/cpp/20)
@@ -58,14 +54,14 @@ Runs natively with zero lag on **Linux**, **Windows**, and **macOS**.
 
 #### Linux & macOS
 ```bash
-git clone https://github.com/saber-88/zugfish.git
+git clone https://github.com/your-username/zugfish.git
 cd zugfish
 ./install.sh
 ```
 
 #### Windows (PowerShell)
 ```powershell
-git clone https://github.com/saber-88/zugfish.git
+git clone https://github.com/your-username/zugfish.git
 cd zugfish
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 .\install.ps1

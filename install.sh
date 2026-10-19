@@ -215,20 +215,10 @@ if [[ "${BUILD_GUI}" == "true" && -f "build/gui/zugfish-qt" ]]; then
         mkdir -p "${PREFIX}/share/applications"
         mkdir -p "${PREFIX}/share/icons/hicolor/scalable/apps"
 
-        # Install app icon
-        if [[ -f "gui/assets/icon.svg" ]]; then
-            cp "gui/assets/icon.svg" "${PREFIX}/share/icons/hicolor/scalable/apps/zugfish.svg"
+        # Install icon
+        if [[ -f "gui/assets/pieces/wK.svg" ]]; then
+            cp "gui/assets/pieces/wK.svg" "${PREFIX}/share/icons/hicolor/scalable/apps/zugfish.svg"
         fi
-        if [[ -f "gui/assets/icon.png" ]]; then
-            mkdir -p "${PREFIX}/share/icons/hicolor/512x512/apps"
-            cp "gui/assets/icon.png" "${PREFIX}/share/icons/hicolor/512x512/apps/zugfish.png"
-        fi
-        for sz in 256 128 64 48 32 16; do
-            if [[ -f "gui/assets/icon-${sz}.png" ]]; then
-                mkdir -p "${PREFIX}/share/icons/hicolor/${sz}x${sz}/apps"
-                cp "gui/assets/icon-${sz}.png" "${PREFIX}/share/icons/hicolor/${sz}x${sz}/apps/zugfish.png"
-            fi
-        done
 
         # Install .desktop launcher
         cat > "${PREFIX}/share/applications/zugfish.desktop" <<EOF
