@@ -706,9 +706,14 @@ GameReview GameReviewer::review(const Game& game, int depth, ProgressCallback pr
         analyzed.centipawn_loss = cpl;
         analyzed.classification = classification;
 
-        // Add a pair of engine-generated teaching lines only for a >10 percentage-point
-        // drop in the moving player's win probability. Both lines start before the move.
-        if (win_loss > 0.10 && !prev_eval.best_move.empty() && prev_eval.best_move != ply.uci) {
+        // Add a pair of engine-generated teaching lines for every mistake, blunder,
+        // missed win, or significant win-probability drop (>= 6 percentage points).
+        // Both lines start before the move to allow direct side-by-side comparison.
+        bool is_mistake_worthy = (classification == MoveClassification::Mistake ||
+                                  classification == MoveClassification::Blunder ||
+                                  classification == MoveClassification::Miss ||
+                                  win_loss >= 0.06);
+        if (is_mistake_worthy && !prev_eval.best_move.empty() && prev_eval.best_move != ply.uci) {
             analyzed.best_line = build_learning_line(engine_, ply.fen_before, prev_eval.best_move, depth, cancel_cb);
             analyzed.played_line = build_learning_line(engine_, ply.fen_before, ply.uci, depth, cancel_cb);
         }
@@ -848,6 +853,39 @@ void GameReviewer::print_review(const GameReview& review, std::ostream& os) {
         }
     }
     if (has_critical) {
+        os << "================================================================================\n";
+    }
+
+    // Print Learn from Mistakes teaching lines
+    bool has_learning = false;
+    for (size_t i = 0; i < review.plies.size(); ++i) {
+        const auto& ap = review.plies[i];
+        if (!ap.best_line.empty() && !ap.played_line.empty()) {
+            if (!has_learning) {
+                os << " Learn from Mistakes (Teaching Lines):\n";
+                has_learning = true;
+            }
+            int move_num = static_cast<int>(i / 2) + 1;
+            std::string prefix = (i % 2 == 0) ? (std::to_string(move_num) + ". ")
+                                              : (std::to_string(move_num) + "... ");
+            os << "   " << prefix << ap.ply.san << " (" << to_string(ap.classification)
+               << ", -" << static_cast<int>(ap.win_percent_loss * 100.0) << "% win chance)\n";
+
+            auto format_line = [](const std::vector<LearningPly>& plies, size_t max_plies = 8) {
+                std::string res;
+                for (size_t k = 0; k < std::min(plies.size(), max_plies); ++k) {
+                    if (k > 0) res += " ";
+                    res += plies[k].ply.san;
+                }
+                if (plies.size() > max_plies) res += " ...";
+                return res;
+            };
+
+            os << "     * Recommended: " << format_line(ap.best_line) << "\n";
+            os << "     * Punishment:  " << format_line(ap.played_line) << "\n";
+        }
+    }
+    if (has_learning) {
         os << "================================================================================\n";
     }
     os << "\n";

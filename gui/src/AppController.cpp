@@ -659,6 +659,7 @@ QVariantMap AppController::makeCurrent() const
             m["cpLoss"] = a.cpLoss;
             m["nextBestSan"] = a.nextBestSan;
             m["comment"] = coachComment(a.cls);
+            m["hasLearning"] = !a.bestLine.isEmpty() && !a.playedLine.isEmpty();
         }
     } else {
         m["title"] = QStringLiteral("Starting position");
@@ -809,7 +810,7 @@ void AppController::rebuildReviewDerived()
 
         for (int i = 0; i < review_.plies.size(); ++i) {
             const zq::AnalyzedData &a = review_.plies[i];
-            if (a.winLoss <= 0.10 || a.bestLine.isEmpty() || a.playedLine.isEmpty())
+            if (a.bestLine.isEmpty() || a.playedLine.isEmpty())
                 continue;
             const int ply = i + 1;
             const bool white = (ply % 2 == 1);
@@ -818,7 +819,7 @@ void AppController::rebuildReviewDerived()
             m["cls"] = a.cls;
             m["white"] = white;
             m["label"] = QStringLiteral("%1%2 %3").arg((ply + 1) / 2).arg(white ? "." : "...").arg(game_.plies[i].san);
-            m["detail"] = QStringLiteral("−%1 percentage points").arg(qRound(a.winLoss * 100.0));
+            m["detail"] = QStringLiteral("−%1% win chance").arg(qRound(a.winLoss * 100.0));
             m["bestMove"] = a.bestBeforeSan;
             m["bestPlies"] = a.bestLine.size();
             m["playedPlies"] = a.playedLine.size();

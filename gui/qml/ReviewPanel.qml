@@ -160,7 +160,7 @@ Item {
                         border.color: Qt.rgba(0.31, 0.69, 1, 0.3)
                         RowLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            anchors.leftMargin: 12; anchors.rightMargin: 10
                             Icon { name: "target"; color: Theme.bestArrow; size: 16 }
                             Text {
                                 text: "Best was"; color: Theme.text1
@@ -177,6 +177,11 @@ Item {
                                 text: "−" + Math.round(root.cur.winLoss * 100) + "% win chance"
                                 color: Theme.danger
                                 font.family: Theme.mono; font.pixelSize: Theme.fsSm + 1
+                            }
+                            AppButton {
+                                visible: (root.cur.hasLearning === true) && !App.learningMode
+                                text: "Learn"; icon: "target"; variant: "primary"; compact: true
+                                onClicked: App.openLearning(root.cur.ply, 0)
                             }
                         }
                     }
@@ -228,28 +233,57 @@ Item {
                 }
             }
 
-            // ---------- learn from major win-probability drops ----------
+            // ---------- learn from mistakes ----------
             Card {
                 Layout.fillWidth: true
-                visible: root.done && App.learningMoments.length > 0
+                visible: root.done
                 color: Theme.bg2
                 border.width: 1.5
-                border.color: Theme.accent
+                border.color: App.learningMoments.length > 0 ? Theme.accent : Theme.line
                 implicitHeight: learningList.implicitHeight + 28
                 ColumnLayout {
                     id: learningList
                     anchors.fill: parent
                     anchors.margins: 14
                     spacing: 9
-                    Text {
-                        text: "LEARN FROM MISTAKES"
-                        color: Theme.text3; font.family: Theme.sans; font.weight: Font.DemiBold
-                        font.pixelSize: Theme.fsXs; font.letterSpacing: 1.1
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            text: "LEARN FROM MISTAKES"
+                            color: Theme.text3; font.family: Theme.sans; font.weight: Font.DemiBold
+                            font.pixelSize: Theme.fsXs; font.letterSpacing: 1.1
+                        }
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            visible: App.learningMoments.length > 0
+                            text: App.learningMoments.length + (App.learningMoments.length === 1 ? " moment" : " moments")
+                            color: Theme.accent; font.family: Theme.mono; font.weight: Font.DemiBold; font.pixelSize: Theme.fsSm
+                        }
                     }
                     Text {
-                        text: "For every drop greater than 10 percentage points, compare the best move with the opponent's strongest punishment."
+                        visible: App.learningMoments.length > 0
+                        text: "Compare the engine's best continuation with the opponent's strongest punishment line."
                         Layout.fillWidth: true; wrapMode: Text.WordWrap
                         color: Theme.text2; font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                    }
+                    AppButton {
+                        visible: App.learningMoments.length > 0 && !App.learningMode
+                        Layout.fillWidth: true
+                        variant: "primary"
+                        icon: "target"
+                        text: "Practice Mistakes (" + App.learningMoments.length + ")"
+                        onClicked: App.openLearning(App.learningMoments[0].ply, 0)
+                    }
+                    RowLayout {
+                        visible: App.learningMoments.length === 0
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Icon { name: "check"; color: Theme.success; size: 18 }
+                        Text {
+                            text: "Clean game! No major mistakes detected to review."
+                            color: Theme.text1; font.family: Theme.sans; font.pixelSize: Theme.fsSm
+                            Layout.fillWidth: true
+                        }
                     }
                     Repeater {
                         model: App.learningMoments
@@ -287,22 +321,24 @@ Item {
             }
 
 
-            // ---------- accuracy ----------
+            // ---------- accuracy & rating ----------
             Card {
                 Layout.fillWidth: true
                 visible: root.done
-                implicitHeight: 176
+                implicitHeight: (root.sum.whiteRating > 0 || root.sum.blackRating > 0) ? 198 : 176
                 Row {
                     anchors.centerIn: parent
                     spacing: 44
                     AccuracyRing {
                         value: root.sum.whiteAccuracy || 0
+                        rating: root.sum.whiteRating || 0
                         label: App.gameInfo.white || "White"
                         sublabel: "White accuracy"
                     }
-                    Rectangle { width: 1; height: 100; color: Theme.line; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: -18 }
+                    Rectangle { width: 1; height: (root.sum.whiteRating > 0 || root.sum.blackRating > 0) ? 110 : 100; color: Theme.line; anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: (root.sum.whiteRating > 0 || root.sum.blackRating > 0) ? -12 : -18 }
                     AccuracyRing {
                         value: root.sum.blackAccuracy || 0
+                        rating: root.sum.blackRating || 0
                         label: App.gameInfo.black || "Black"
                         sublabel: "Black accuracy"
                     }
